@@ -2,22 +2,25 @@
 
 ## Overview
 
-A comprehensive Cardano staking system with factory-managed pools, voting mechanisms, and time-based multipliers. The system allows admins to create staking pools with configurable voting options and time multipliers, while users can stake tokens and participate in governance through voting.
+A comprehensive Cardano staking system with factory-managed pools, voting mechanisms, time-based multipliers, and backend-driven pool finalization. The system allows admins to create staking pools with configurable voting options and time multipliers, while users stake tokens and participate in voting. Pool finalization determines winners and enforces time-based withdrawal restrictions.
 
 ## Key Features
 
 - **Factory-Managed Pools**: Admin-controlled pool creation with unique configurations
 - **Voting System**: Users select from predefined voting options when staking
-- **Time-Based Multipliers**: Configurable time options that affect vote power
+- **Time-Based Multipliers**: Configurable time options that affect vote power and withdrawal timing
 - **Vote Power Calculation**: Automatic calculation of vote power (vote_option × time_option)
+- **Pool Finalization**: Backend-driven mechanism to set winning vote options
+- **Withdrawal Restrictions**: Time-based withdrawal rules based on winner/loser status
 - **Token-Specific Staking**: Each pool specifies which tokens can be staked
-- **Flexible Withdrawals**: Users can withdraw their stakes at any time
 
 ## How It Works
 
 1. **Pool Creation**: Only admins can create new staking pools through the factory contract
 2. **Staking with Voting**: Users stake tokens and must select voting and time options
 3. **Vote Power**: The system calculates vote power by multiplying vote option and time option
+4. **Pool Finalization**: Backend service finalizes pools by setting winning vote options
+5. **Withdrawal Rules**: Winners must wait until their time option expires; losers can withdraw immediately
 
 ## Architecture
 
@@ -37,6 +40,7 @@ FactoryParams {
 **Operations:**
 - `CreatePool`: Admin creates new staking pools with voting/time configurations
 - `UpdatePool`: Admin can activate/deactivate pools
+- `FinalizePool`: Backend service sets winning vote option and enables withdrawals
 - `UpdateFactoryAdmin`: Transfer factory admin rights
 
 ### 2. Staking Contract
@@ -82,6 +86,9 @@ PoolInfo {
   allowed_token_name: AssetName,
   time_options: [30_days, 90_days, 365_days], // Time multipliers in POSIX
   is_active: Bool,
+  is_finalized: Bool,                   // Pool finalization status
+  winning_vote_option: Option<Int>,     // Winning vote option (set after finalization)
+  finalized_at: Option<POSIXTime>,      // Finalization timestamp
   // ... other fields
 }
 ```
@@ -136,18 +143,42 @@ Stakers can increase their existing stake amount while maintaining their origina
 - UTxO sent back to validator
 - Minimum ADA maintained
 
+## Pool Finalization
+
+Pools must be finalized by a backend service before any withdrawals are allowed. This mechanism determines winners and enforces time-based withdrawal restrictions.
+
+**Process:**
+1. Backend service calls `FinalizePool` with winning vote option
+2. Factory contract validates admin signature and winning option exists
+3. Pool is marked as finalized with winning vote option and timestamp
+4. Withdrawal restrictions are now enforced based on winner/loser status
+
+**Finalization Fields:**
+```aiken
+pool.is_finalized = True
+pool.winning_vote_option = Some(winning_option)
+pool.finalized_at = Some(current_timestamp)
+```
+
 ## Withdraw Stakes
 
-Stakers can perform a full withdrawal, reclaiming their staked tokens.
+Stakers can withdraw their tokens, but withdrawal timing depends on pool finalization and winner/loser status.
+
+**Withdrawal Rules:**
+- **Pool Not Finalized**: No withdrawals allowed (all users must wait)
+- **Pool Finalized + Winner**: Must wait until `time_option` expires from staking date
+- **Pool Finalized + Loser**: Can withdraw immediately after finalization
 
 **Process:**
 1. User calls `WithdrawStake` redeemer
-2. All staked tokens are returned to user
-3. Mint asset and owner asset are burned
-4. Staking position is completely closed
+2. Contract checks pool finalization status from factory
+3. Withdrawal timing is validated based on winner/loser status
+4. If allowed, all staked tokens are returned and assets are burned
 
 **Validations:**
 - Transaction signed by staker
+- Pool finalization status checked via factory input
+- Withdrawal timing rules enforced
 - Mint asset is burned (-1 quantity)
 - Owner asset is burned (-1 quantity)
 - Exactly 2 assets burned in transaction
