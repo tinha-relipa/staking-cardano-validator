@@ -13,6 +13,7 @@ use factory_utils.{find_pool_by_id}
 pub fn pool_info_to_staking_params(
   pool_info: PoolInfo,
   asset_name: ByteArray,
+  factory_policy_id: PolicyId,
 ) -> StakingParams {
   StakingParams {
     admin_pkh: pool_info.admin_pkh,
@@ -24,6 +25,8 @@ pub fn pool_info_to_staking_params(
     allowed_token_policy: pool_info.allowed_token_policy,
     allowed_token_name: pool_info.allowed_token_name,
     time_options: pool_info.time_options,
+    factory_policy_id,
+    pool_id: pool_info.pool_id,
   }
 }
 

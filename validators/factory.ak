@@ -8,7 +8,7 @@ use cardano/transaction.{
 use constants.{min_lovelace_in_utxo}
 use types.{
   AddressHash, FactoryDatum, FactoryRedeemer, FactoryMintRedeemer, PoolInfo,
-  StakingParams, CreatePool, UpdatePool, UpdateFactoryAdmin, MintPoolToken,
+  StakingParams, CreatePool, UpdatePool, FinalizePool, UpdateFactoryAdmin, MintPoolToken,
   BurnPoolToken,
 }
 
@@ -70,6 +70,9 @@ validator factory(params: FactoryParams) {
           allowed_token_policy: pool_params.allowed_token_policy,
           allowed_token_name: pool_params.allowed_token_name,
           time_options: pool_params.time_options,
+          is_finalized: False,
+          winning_vote_option: None,
+          finalized_at: None,
         }
 
         // Validate output datum
@@ -102,6 +105,43 @@ validator factory(params: FactoryParams) {
             fn(pool) {
               if pool.pool_id == pool_id {
                 PoolInfo { ..pool, is_active: new_status }
+              } else {
+                pool
+              }
+            },
+          )
+
+        // Validate output datum
+        let datum_valid = 
+          output_factory_datum.factory_admin == factory_datum.factory_admin &&
+          output_factory_datum.total_pools == factory_datum.total_pools &&
+          output_factory_datum.pools == updated_pools
+
+        // Validate minimum ADA is maintained
+        let min_ada_valid = 
+          lovelace_of(output_to_factory.value) >= min_lovelace_in_utxo
+
+        admin_signed && datum_valid && min_ada_valid
+      }
+
+      FinalizePool { pool_id, winning_vote_option } -> {
+        // Get current time from transaction validity range
+        expect Finite(current_time) = transaction.validity_range.upper_bound.bound_type
+        
+        // Find and finalize the pool
+        let updated_pools = 
+          list.map(
+            factory_datum.pools,
+            fn(pool) {
+              if pool.pool_id == pool_id {
+                // Validate winning vote option is in pool's voting options
+                expect list.has(pool.voting_options, winning_vote_option)
+                PoolInfo { 
+                  ..pool, 
+                  is_finalized: True,
+                  winning_vote_option: Some(winning_vote_option),
+                  finalized_at: Some(current_time),
+                }
               } else {
                 pool
               }
@@ -197,6 +237,8 @@ test create_pool() {
     allowed_token_policy: #"abcdef1234567890abcdef1234567890abcdef12",
     allowed_token_name: "ALLOWED_TOKEN",
     time_options: [1727453227631, 1727456827631],
+    factory_policy_id: #"abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+    pool_id: #"1a2b3c4d5e6f7890",
   }
 
   let pool_id = #"1a2b3c4d5e6f7890"
@@ -213,6 +255,9 @@ test create_pool() {
     allowed_token_policy: pool_params.allowed_token_policy,
     allowed_token_name: pool_params.allowed_token_name,
     time_options: pool_params.time_options,
+    is_finalized: False,
+    winning_vote_option: None,
+    finalized_at: None,
   }
 
   let output_datum = FactoryDatum {

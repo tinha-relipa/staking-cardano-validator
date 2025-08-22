@@ -22,12 +22,11 @@ pub type StakingDatum {
 }
 
 pub type StakingRedeemer {
-  AddStakeOrConsumeStakingRewards {
+  AddStake {
     vote_option: Int,
     time_option: Int,
   }
   WithdrawStake
-  DistributeStakingRewards
 }
 
 pub type MintRedeemer {
@@ -45,6 +44,8 @@ pub type StakingParams {
   allowed_token_policy: PolicyId,
   allowed_token_name: AssetName,
   time_options: List<POSIXTime>,
+  factory_policy_id: PolicyId,
+  pool_id: ByteArray,
 }
 
 // Factory-related types
@@ -60,6 +61,9 @@ pub type PoolInfo {
   allowed_token_policy: PolicyId,
   allowed_token_name: AssetName,
   time_options: List<POSIXTime>,
+  is_finalized: Bool,
+  winning_vote_option: Option<Int>,
+  finalized_at: Option<POSIXTime>,
 }
 
 pub type FactoryDatum {
@@ -76,6 +80,10 @@ pub type FactoryRedeemer {
   UpdatePool {
     pool_id: ByteArray,
     new_status: Bool,
+  }
+  FinalizePool {
+    pool_id: ByteArray,
+    winning_vote_option: Int,
   }
   UpdateFactoryAdmin {
     new_admin: AddressHash,
